@@ -30,7 +30,7 @@ app.get(/^\/new\/([\s\S]*)/, function (req, res){
       id = counter.seq
       Url.create({_id: id, url: url}, function(err, new_url){
         if(err) throw err
-        var shorturl = 'https://api-projects-disappearer.c9users.io/' + id2shorturl(id)
+        var shorturl = 'https://lexlabs-shorturl.herokuapp.com/' + id2shorturl(id)
         var retObj = {
           original_url: url,
           short_url: shorturl
