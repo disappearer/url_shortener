@@ -3,54 +3,63 @@ var charmap = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 var express = require('express')
 var app = express()
 
-var mongodb = require('mongodb')
-var mongoclient = mongodb.MongoClient
 var mongourl = process.env.MONGOLAB_URI
+var mongoose = require('mongoose')
+var counter_schema = new mongoose.Schema({_id: String, seq: Number})
+var url_schema = new mongoose.Schema({_id: Number, url: String})
 
 app.use(express.static('public'))
 
-app.get('/new/:url', function (req, res){
-  var url = req.params.url
+app.get(/^\/new\/([\s\S]*)/, function (req, res){
+  var url = req.params[0]
+  var validUrl = require('valid-url')
+  if(!validUrl.isWebUri(url)){
+    var retstring = '\'' + url + '\'is not a valid web url. Please try again.'
+    res.send(retstring)
+    return
+  }
   var id = null
-  mongoclient.connect(mongourl, function(err,db){
-    if (err) {
-      console.log('Unable to connect to the mongoDB server. Error:', err)
-    } else {
-      console.log('Connection established to', mongourl)
-      var url_id_counter = db.collection('url_id_counter')
-      url_id_counter.findAndModify(
-        {
-          query: {'_id': 'url_id'},
-          update: { $inc: {'seq': 1} },
-          new: true
+  var connection = mongoose.createConnection(mongourl)
+  var Counter = connection.model('Counter', counter_schema, 'url_id_counter')
+  var Url = connection.model('Url', url_schema, 'urls')
+  Counter.findOneAndUpdate(
+    {_id: 'url_id'},
+    {$inc: {seq: 1}},
+    function(err, counter){
+      if(err) throw err
+      id = counter.seq
+      Url.create({_id: id, url: url}, function(err, new_url){
+        if(err) throw err
+        var shorturl = 'https://api-projects-disappearer.c9users.io/' + id2shorturl(id)
+        var retObj = {
+          original_url: url,
+          short_url: shorturl
         }
-      ).then(function (ret){
-        console.log(ret)
-        var urls = db.collection('urls')
-        urls.insertOne(
-          {
-            _id: ret.seq,
-            url: url
-          }, 
-          function(err,data){
-            if (err) throw err
-            var shorturl = id2shorturl(ret.seq)
-            res.send(shorturl)
-          }
-        )
-        db.close
+        res.send(retObj)
+        connection.close()
       })
-      // console.log(ret)
-      
-    }
-  })
+    })
+    
 })
 
 app.get('/:shorturl', function(req,res){
   var shorturl = req.params.shorturl
   var id = shorturl2id(shorturl)
-  console.log(id)
-  res.send(id)
+  var connection = mongoose.createConnection(mongourl)
+  var Url = connection.model('Url', url_schema, 'urls')
+  Url.findOne(
+    {_id: id},
+    function(err, url){
+      if(err) throw err
+      if(!url){
+        res.send('Not found.')
+      }
+      else {
+        res.redirect(url.url)
+      }
+      connection.close()
+    }
+  )
 })
 
 var port = process.env.PORT || 8080
